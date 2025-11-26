@@ -1,0 +1,18 @@
+PHARMACY TRANSACTION VOLUME PREDICTION
+======================================================================
+
+DATA: 463,031 transactions -> 14,753 after features
+SPLIT: 11,802 train / 2,951 test
+FEATURES: 15 available
+
+RFECV: lag_7, lag_14, roll_7_mean, roll_7_std, roll_14_std, in_out_ratio
+SelectKBest: in_out_ratio, roll_7_mean, lag_14, roll_14_mean, lag_7, roll_14_std
+
+PERFORMANCE:
+                RFECV      SelectKBest
+RMSE             1.83        2.41
+MAE              1.61        1.95
+R2 (Test)      0.8965      0.8203
+R2 (Train)     0.9893      0.9883
+
+WINNER: RFECV
