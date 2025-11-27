@@ -53,13 +53,16 @@ desktop.ini
 # Results and outputs (exclude large intermediate files)
 results/
 results_v4/
-# But allow important output CSVs in rfecv-only/outputs/
+# But allow important output CSVs and visualizations in rfecv-only/outputs/
 !data-mining-final-project/rfecv-only/outputs/*.csv
-# Exclude PNG visualizations (can be regenerated)
+!data-mining-final-project/rfecv-only/outputs/*.png
+# Exclude other PNGs (can be regenerated)
 *.png
 *.jpg
 *.jpeg
 *.pdf
+# But include rfecv-only outputs
+!data-mining-final-project/rfecv-only/outputs/*
 
 # Logs
 *.log
