@@ -50,9 +50,12 @@ desktop.ini
 *.swo
 *~
 
-# Results and outputs
+# Results and outputs (exclude large intermediate files)
 results/
 results_v4/
+# But allow important output CSVs in rfecv-only/outputs/
+!data-mining-final-project/rfecv-only/outputs/*.csv
+# Exclude PNG visualizations (can be regenerated)
 *.png
 *.jpg
 *.jpeg

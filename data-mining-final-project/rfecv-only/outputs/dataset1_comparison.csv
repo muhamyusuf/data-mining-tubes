@@ -1,0 +1,9 @@
+Model,Preprocessing,Features,Metric_Value,Metric_Name
+Decision Tree (Clf),BEFORE (No RFECV),53,0.15404929577464788,F1-Score
+Decision Tree (Clf),AFTER (RFECV),10,0.7347931873479319,F1-Score
+Naive Bayes,BEFORE (No RFECV),53,0.6990424076607387,F1-Score
+Naive Bayes,AFTER (RFECV),10,0.6969904240766074,F1-Score
+Logistic Regression,BEFORE (No RFECV),53,0.724609375,F1-Score
+Logistic Regression,AFTER (RFECV),10,0.7280444009141365,F1-Score
+Decision Tree (Reg),BEFORE (No RFECV),53,-0.1495780539879885,R²
+Decision Tree (Reg),AFTER (RFECV),10,-0.1071379463856661,R²

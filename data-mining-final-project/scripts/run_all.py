@@ -1,5 +1,5 @@
 """
-Run both dataset analyses sequentially
+Run both dataset analyses sequentially + comparative analysis
 Usage: python scripts/run_all.py
 """
 
@@ -11,21 +11,22 @@ from pathlib import Path
 # Get project root directory
 project_root = Path(__file__).parent.parent
 
-print("="*70)
-print("🚀 RUNNING ALL ANALYSES")
-print("="*70)
+print("="*80)
+print("🚀 TUGAS BESAR PENAMBANGAN DATA - FULL ANALYSIS")
+print("="*80)
 
 datasets = [
     ("Dataset 1: Pharmacy", "scripts/dataset1_analysis.py"),
-    ("Dataset 2: Wave", "scripts/dataset2_analysis.py")
+    ("Dataset 2: Wave", "scripts/dataset2_analysis.py"),
+    ("Comparative Analysis", "scripts/comparative_analysis.py")
 ]
 
 results = []
 
 for name, script in datasets:
-    print(f"\n{'='*70}")
+    print(f"\n{'='*80}")
     print(f"▶️  Starting: {name}")
-    print(f"{'='*70}\n")
+    print(f"{'='*80}\n")
     
     start_time = time.time()
     
