@@ -1,0 +1,14 @@
+Feature,RFECV_Ranking,Selected,Category,Interpretation
+Hmax(m),1,YES,Wave Parameters,Wave characteristics
+WaveDir(deg),1,YES,Wave Parameters,Wave characteristics
+WavePeriod(s),1,YES,Wave Parameters,Wave characteristics
+SurfCurrentDir,1,YES,Direction,Wind/wave direction
+WindSpeed(knots),1,YES,Wind,Wind measurements
+WindSea(m),2,NO,Wind,Wind measurements
+WindSeaDir(deg),2,NO,Wind,Wind measurements
+SeaSurfaceTemperature(°C),3,NO,Temperature,Water/air temperature
+SeaSurfaceSalinity(PSU),3,NO,Salinity,Water salinity
+WindDir(deg),3,NO,Wind,Wind measurements
+PrimSwell(m),4,NO,Other,PrimSwell(m)
+PrimSwellDir(deg),4,NO,Direction,Wind/wave direction
+SurfCurrentSpd(cm/s),4,NO,Oceanographic,Ocean current measurements

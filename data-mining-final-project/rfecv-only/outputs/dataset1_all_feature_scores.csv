@@ -1,0 +1,47 @@
+Feature,RFECV_Ranking,Selected,Category,Interpretation
+qty_lag_1,1,YES,Lag (Historical),Past demand 1 days ago
+qty_roll_min_3,1,YES,Rolling Extremes,Peak/trough demand over 3 days
+qty_ewma_3,1,YES,Exponential MA,Weighted average (span 3)
+qty_change_1,1,YES,Growth Rate,Demand change over 1 periods
+qty_change_3,1,YES,Growth Rate,Demand change over 3 periods
+qty_change_7,1,YES,Growth Rate,Demand change over 7 periods
+qty_roll_max_3,2,NO,Rolling Extremes,Peak/trough demand over 3 days
+qty_roll_std_7,3,NO,Rolling Volatility,Demand volatility over 7 days
+qty_roll_mean_30,4,NO,Rolling Average,Average demand over 30 days
+qty_lag_2,5,NO,Lag (Historical),Past demand 2 days ago
+nilai_per_unit,6,NO,Transaction Value,Price per unit
+qty_lag_21,7,NO,Lag (Historical),Past demand 21 days ago
+qty_ewma_7,8,NO,Exponential MA,Weighted average (span 7)
+qty_cv_30,9,NO,Coefficient of Variation,Relative volatility over 30 days
+qty_ewma_14,10,NO,Exponential MA,Weighted average (span 14)
+qty_cv_14,11,NO,Coefficient of Variation,Relative volatility over 14 days
+qty_cv_7,12,NO,Coefficient of Variation,Relative volatility over 7 days
+qty_roll_min_30,13,NO,Rolling Extremes,Peak/trough demand over 30 days
+qty_roll_max_30,14,NO,Rolling Extremes,Peak/trough demand over 30 days
+qty_roll_std_30,15,NO,Rolling Volatility,Demand volatility over 30 days
+qty_roll_mean_7,16,NO,Rolling Average,Average demand over 7 days
+qty_roll_min_21,17,NO,Rolling Extremes,Peak/trough demand over 21 days
+qty_roll_max_21,18,NO,Rolling Extremes,Peak/trough demand over 21 days
+qty_roll_std_21,19,NO,Rolling Volatility,Demand volatility over 21 days
+qty_roll_mean_21,20,NO,Rolling Average,Average demand over 21 days
+qty_roll_min_14,21,NO,Rolling Extremes,Peak/trough demand over 14 days
+qty_roll_max_14,22,NO,Rolling Extremes,Peak/trough demand over 14 days
+qty_roll_std_14,23,NO,Rolling Volatility,Demand volatility over 14 days
+qty_roll_mean_14,24,NO,Rolling Average,Average demand over 14 days
+qty_roll_min_7,25,NO,Rolling Extremes,Peak/trough demand over 7 days
+qty_roll_max_7,26,NO,Rolling Extremes,Peak/trough demand over 7 days
+qty_roll_std_3,27,NO,Rolling Volatility,Demand volatility over 3 days
+qty_roll_mean_3,28,NO,Rolling Average,Average demand over 3 days
+qty_lag_28,29,NO,Lag (Historical),Past demand 28 days ago
+qty_lag_3,30,NO,Lag (Historical),Past demand 3 days ago
+qty_lag_14,31,NO,Lag (Historical),Past demand 14 days ago
+qty_lag_7,32,NO,Lag (Historical),Past demand 7 days ago
+day_of_year,33,NO,Temporal,Time component: day of year
+is_month_end,34,NO,Temporal Flag,Binary indicator: is month end
+is_month_start,35,NO,Temporal Flag,Binary indicator: is month start
+quarter,36,NO,Temporal,Time component: quarter
+is_weekend,37,NO,Temporal Flag,Binary indicator: is weekend
+week_of_year,38,NO,Temporal,Time component: week of year
+day_of_week,39,NO,Temporal,Time component: day of week
+month,40,NO,Temporal,Time component: month
+day,41,NO,Temporal,Time component: day

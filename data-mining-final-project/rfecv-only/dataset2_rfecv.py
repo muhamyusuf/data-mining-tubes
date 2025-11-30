@@ -1,163 +1,171 @@
 """
-DATASET 2: Wave Measurement - RFECV Feature Selection Validation
+================================================================================
+DATASET 2: WAVE HEIGHT PREDICTION - RFECV FEATURE SELECTION
+================================================================================
 Tugas Besar Penambangan Data 2025
 
-Objective: Validate RFECV preprocessing effectiveness
-- BEFORE: All features (no preprocessing)
-- AFTER: RFECV selected features (preprocessing applied)
-- Validation: Simple ML models (Decision Tree, Naive Bayes, Logistic Regression)
+OBJECTIVE: 
+    Memprediksi significant wave height (Hsig) berdasarkan meteorological & 
+    oceanographic measurements.
+    
+PREPROCESSING FOCUS:
+    RFECV (Recursive Feature Elimination with Cross-Validation) untuk:
+    - Mengurangi dimensionality dari banyak sensor measurements
+    - Menghilangkan redundant/correlated features (sensor data often highly correlated)
+    - Mengidentifikasi most predictive meteorological & oceanographic factors
 
-Focus: Preprocessing validation, NOT building best model
+VALIDATION:
+    Simple ML models (Decision Tree, Naive Bayes, Logistic Regression) 
+    digunakan HANYA sebagai alat ukur kualitas data preprocessing, 
+    BUKAN untuk mencari model terbaik.
+
+================================================================================
 """
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import RFECV
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
-from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
-import time
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, accuracy_score, r2_score, mean_squared_error
+from scipy.stats import ttest_rel
 import warnings
 warnings.filterwarnings('ignore')
 
-print("="*80)
-print("DATASET 2: WAVE MEASUREMENT - RFECV PREPROCESSING VALIDATION")
-print("="*80)
-print("\nTugas Besar Penambangan Data 2025")
-print("Metode Preprocessing: RFECV (Recursive Feature Elimination with CV)")
-print("Validasi: Model ML Sederhana")
-print("="*80)
+# Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style('whitegrid')
 
-# ===== 1. LOAD DATA =====
+print("=" * 80)
+print("DATASET 2: WAVE HEIGHT PREDICTION - RFECV FEATURE SELECTION")
+print("=" * 80)
+print("\nTugas Besar Penambangan Data 2025")
+print("Preprocessing Method: RFECV (Feature Selection for Dimensionality Reduction)")
+print("Validation: Simple ML models as data quality measuring tools")
+print("=" * 80)
+
+# ============================================================================
+# 1. DATA LOADING
+# ============================================================================
 print("\n[1/7] 📂 Loading data...")
 
-data_dir = Path(__file__).parent.parent / 'dataset-type-2'
-excel_files = sorted([f for f in data_dir.glob('*.xlsx')])
-
-if not excel_files:
-    print("❌ No Excel files found!")
-    excel_files = sorted([f for f in data_dir.glob('*.xls')])
+# Get script directory
+script_dir = Path(__file__).parent
+data_path = script_dir.parent / "dataset-type-2"
+excel_files = list(data_path.glob("*.xlsx"))
 
 print(f"Found {len(excel_files)} Excel files")
 
 dfs = []
 for file in excel_files:
     print(f"  Loading: {file.name}...")
-    df = pd.read_excel(file, engine='openpyxl', header=4)
+    df = pd.read_excel(file, engine='openpyxl')
     dfs.append(df)
 
-df = pd.concat(dfs, ignore_index=True)
-print(f"✅ Loaded {len(df):,} rows from {len(excel_files)} files")
+df_raw = pd.concat(dfs, ignore_index=True)
+print(f"✅ Loaded {len(df_raw):,} rows from {len(excel_files)} files")
 
-# ===== 2. AUTO-DETECT FEATURES =====
-print("\n[2/7] 🔍 Auto-detecting features and target...")
+# ============================================================================
+# 2. DATA PREPROCESSING
+# ============================================================================
+print("\n[2/7] 🔧 Data preprocessing...")
 
-numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+# Extract header from row 3 (0-indexed) and data from row 4 onwards
+new_columns = df_raw.iloc[3].values
+df_raw = df_raw.iloc[4:].reset_index(drop=True)
+df_raw.columns = new_columns
 
-if len(numeric_cols) == 0:
-    raise ValueError("No numeric columns found!")
+# Convert all columns to numeric
+df_numeric = df_raw.apply(pd.to_numeric, errors='coerce')
 
-# Last column as target
-target_col = numeric_cols[-1]
-feature_cols = numeric_cols[:-1]
+# Remove columns that are completely NaN
+df_clean = df_numeric.dropna(axis=1, how='all').copy()
 
-print(f"✅ Auto-detected:")
-print(f"   Target: '{target_col}'")
-print(f"   Features: {len(feature_cols)} columns")
+# Detect target column (Hsig or first numeric column)
+hsig_candidates = [col for col in df_clean.columns if 'sig' in str(col).lower() and 'scale' not in str(col).lower()]
+target_col = hsig_candidates[0] if hsig_candidates else [c for c in df_clean.columns if df_clean[c].dtype in [np.float64, np.int64]][0]
+target_col = str(target_col)  # Ensure target_col is a string
 
-# ===== 3. HANDLE MISSING VALUES =====
-print("\n[3/7] 🧹 Handling missing values...")
+print(f"✅ Detected target column: '{target_col}' (Wave Height)")
 
-print(f"Total data points: {df.shape[0] * df.shape[1]:,}")
-print(f"NaN values: {df.isna().sum().sum():,} ({df.isna().sum().sum()/(df.shape[0]*df.shape[1])*100:.1f}%)")
+# Remove rows with NaN target
+df_clean = df_clean.dropna(subset=[target_col])
 
-# Drop rows where target is NaN
-df_clean = df[numeric_cols].dropna(subset=[target_col])
-print(f"After dropping NaN targets: {len(df_clean):,} rows")
+# Fill remaining NaN in features with column median - simpler approach
+feature_cols_to_fill = [c for c in df_clean.columns if c != target_col]
+for col in feature_cols_to_fill:
+    df_clean[col] = df_clean[col].fillna(df_clean[col].median())
 
-# Fill remaining NaN in features with 0
-X_original = df_clean[feature_cols].fillna(0)
-y_reg = df_clean[target_col]
+# Remove any columns that still have NaN values
+df_clean = df_clean.dropna(axis=1, how='any')
 
-# ===== ADD NOISY FEATURES TO DEMONSTRATE RFECV EFFECTIVENESS =====
-print("\n[3b/7] 🎲 Adding noisy/redundant features...")
+# Remove zero-variance features (constant columns)
+numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
+for col in numeric_cols:
+    if col != target_col:
+        if df_clean[col].std() == 0:
+            df_clean = df_clean.drop(columns=[col])
 
-# Create noisy features that RFECV should eliminate
-np.random.seed(42)
-n_samples = len(X_original)
+# Remove extreme outliers using top quantile method (gentle, like Dataset 1)
+# This improves model performance by removing sensor errors/extreme anomalies
+for col in df_clean.select_dtypes(include=[np.number]).columns:
+    if col != target_col:  # Don't remove target outliers
+        top_threshold = df_clean[col].quantile(0.99)  # Remove top 1%
+        df_clean = df_clean[df_clean[col] <= top_threshold]
 
-# Random noise features
-for i in range(10):
-    X_original[f'random_noise_{i+1}'] = np.random.randn(n_samples)
-    
-# Uniform noise
-for i in range(5):
-    X_original[f'uniform_noise_{i+1}'] = np.random.uniform(-1, 1, n_samples)
-    
-# Constant features (useless)
-X_original['constant_1'] = 1.0
-X_original['constant_2'] = 42.0
-X_original['constant_3'] = -5.0
+print(f"✅ Cleaned to {len(df_clean):,} samples with {len(df_clean.columns)} numeric features")
 
-# Redundant features (duplicates/squares of existing)
-if 'WindSpeed(knots)' in X_original.columns:
-    X_original['WindSpeed_squared'] = X_original['WindSpeed(knots)'] ** 2
-    X_original['WindSpeed_cubed'] = X_original['WindSpeed(knots)'] ** 3
-if 'WindDir(deg)' in X_original.columns:
-    X_original['WindDir_squared'] = X_original['WindDir(deg)'] ** 2
-    
-# More noise
-X_original['correlated_noise'] = np.random.randn(n_samples) * 0.1 + X_original.iloc[:, 0].values * 0.001
+# ============================================================================
+# 3. FEATURE SELECTION & TARGET DEFINITION
+# ============================================================================
+print("\n[3/7] 🎯 Defining features and target...")
 
-n_noise_features = 10 + 5 + 3 + 3 + 1  # 22 noisy features
-n_original_features = len(feature_cols)
+# Convert column names to strings (some may be numeric)
+df_clean.columns = df_clean.columns.astype(str)
 
-X = X_original.copy()
+# Features: all numeric columns except target
+feature_cols = [col for col in df_clean.columns if col != str(target_col)]
+X = df_clean[feature_cols].copy()
+y_reg = df_clean[str(target_col)].copy()
 
-# Convert column names to strings
-X.columns = X.columns.astype(str)
+# Classification target: High wave (1) vs Low wave (0)
+median_hsig = y_reg.median()
+y_clf = (y_reg > median_hsig).astype(int)
 
-# Create classification target (binary: high vs low)
-median_target = y_reg.median()
-y_clf = (y_reg > median_target).astype(int)
+print(f"✅ Features: {len(feature_cols)} oceanographic & meteorological measurements")
+print(f"   Target (regression): {target_col} [Range: {y_reg.min():.2f} - {y_reg.max():.2f}m]")
+print(f"   Target (classification): High wave (>{median_hsig:.2f}m) vs Low wave")
+print(f"   Class distribution: {dict(y_clf.value_counts().sort_index())}")
 
-print(f"✅ Dataset prepared: {len(X):,} samples × {len(X.columns)} features")
-print(f"   Original features: {n_original_features}")
-print(f"   Noisy features added: {n_noise_features}")
-print(f"   - Random noise: 10")
-print(f"   - Uniform noise: 5")
-print(f"   - Constants: 3")
-print(f"   - Redundant (squares/cubes): 3")
-print(f"   - Correlated noise: 1")
-print(f"   Total features: {len(X.columns)}")
-print(f"   Target stats: min={y_reg.min():.2f}, median={y_reg.median():.2f}, max={y_reg.max():.2f}")
-print(f"   Classification target: {y_clf.value_counts().to_dict()}")
-
-# ===== 4. TRAIN/TEST SPLIT =====
+# ============================================================================
+# 4. TRAIN-TEST SPLIT
+# ============================================================================
 print("\n[4/7] 📊 Train/test split...")
 
-# Random split (not time series)
-X_train, X_test, y_reg_train, y_reg_test, y_clf_train, y_clf_test = train_test_split(
-    X, y_reg, y_clf, test_size=0.2, random_state=42, stratify=y_clf
+X_train, X_test, y_train_clf, y_test_clf, y_train_reg, y_test_reg = train_test_split(
+    X, y_clf, y_reg, test_size=0.2, random_state=42, stratify=y_clf
 )
 
-# Standardization
+# Standardize features
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-print(f"✅ Train: {len(X_train):,} | Test: {len(X_test):,}")
-print(f"   Test set: {len(X_test)/len(X)*100:.1f}% of data")
+# Final safety check: replace any NaN with 0 (shouldn't happen but just in case)
+X_train_scaled = np.nan_to_num(X_train_scaled, nan=0.0)
+X_test_scaled = np.nan_to_num(X_test_scaled, nan=0.0)
 
-# ===== 5. BASELINE (NO PREPROCESSING) =====
+print(f"✅ Train: {len(X_train):,} | Test: {len(X_test):,}")
+print(f"   Test set: {len(X_test) / len(X) * 100:.1f}% of data")
+
+# ============================================================================
+# 5. BASELINE - NO FEATURE SELECTION (ALL FEATURES)
+# ============================================================================
 print("\n[5/7] 📍 BASELINE - No Feature Selection (All features)")
 print("-" * 80)
 
@@ -165,99 +173,101 @@ baseline_results = {}
 
 # Decision Tree Classifier
 print("\n🌲 Decision Tree Classifier...")
-dt_clf = DecisionTreeClassifier(max_depth=8, min_samples_split=50, random_state=42)
-start = time.time()
-dt_clf.fit(X_train_scaled, y_clf_train)
-baseline_results['dt_clf_train_time'] = time.time() - start
-
-y_pred_dt = dt_clf.predict(X_test_scaled)
-baseline_results['dt_clf_accuracy'] = accuracy_score(y_clf_test, y_pred_dt)
-baseline_results['dt_clf_f1'] = f1_score(y_clf_test, y_pred_dt)
-
-print(f"   Accuracy: {baseline_results['dt_clf_accuracy']:.4f}")
-print(f"   F1-Score: {baseline_results['dt_clf_f1']:.4f}")
+dt_clf = DecisionTreeClassifier(max_depth=10, min_samples_split=50, random_state=42)
+dt_clf.fit(X_train_scaled, y_train_clf)
+dt_pred = dt_clf.predict(X_test_scaled)
+baseline_results['Decision Tree'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, dt_pred),
+    'f1': f1_score(y_test_clf, dt_pred, average='weighted'),
+    'predictions': dt_pred
+}
+print(f"   Accuracy: {baseline_results['Decision Tree']['accuracy']:.4f}")
+print(f"   F1-Score: {baseline_results['Decision Tree']['f1']:.4f}")
 
 # Naive Bayes
 print("\n📊 Naive Bayes...")
 nb = GaussianNB()
-start = time.time()
-nb.fit(X_train_scaled, y_clf_train)
-baseline_results['nb_train_time'] = time.time() - start
-
-y_pred_nb = nb.predict(X_test_scaled)
-baseline_results['nb_accuracy'] = accuracy_score(y_clf_test, y_pred_nb)
-baseline_results['nb_f1'] = f1_score(y_clf_test, y_pred_nb)
-
-print(f"   Accuracy: {baseline_results['nb_accuracy']:.4f}")
-print(f"   F1-Score: {baseline_results['nb_f1']:.4f}")
+nb.fit(X_train_scaled, y_train_clf)
+nb_pred = nb.predict(X_test_scaled)
+baseline_results['Naive Bayes'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, nb_pred),
+    'f1': f1_score(y_test_clf, nb_pred, average='weighted'),
+    'predictions': nb_pred
+}
+print(f"   Accuracy: {baseline_results['Naive Bayes']['accuracy']:.4f}")
+print(f"   F1-Score: {baseline_results['Naive Bayes']['f1']:.4f}")
 
 # Logistic Regression
 print("\n📈 Logistic Regression...")
 lr = LogisticRegression(max_iter=1000, random_state=42)
-start = time.time()
-lr.fit(X_train_scaled, y_clf_train)
-baseline_results['lr_train_time'] = time.time() - start
+lr.fit(X_train_scaled, y_train_clf)
+lr_pred = lr.predict(X_test_scaled)
+baseline_results['Logistic Regression'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, lr_pred),
+    'f1': f1_score(y_test_clf, lr_pred, average='weighted'),
+    'predictions': lr_pred
+}
+print(f"   Accuracy: {baseline_results['Logistic Regression']['accuracy']:.4f}")
+print(f"   F1-Score: {baseline_results['Logistic Regression']['f1']:.4f}")
 
-y_pred_lr = lr.predict(X_test_scaled)
-baseline_results['lr_accuracy'] = accuracy_score(y_clf_test, y_pred_lr)
-baseline_results['lr_f1'] = f1_score(y_clf_test, y_pred_lr)
+print(f"\n✅ Baseline (All {len(feature_cols)} features) completed")
 
-print(f"   Accuracy: {baseline_results['lr_accuracy']:.4f}")
-print(f"   F1-Score: {baseline_results['lr_f1']:.4f}")
-
-# Decision Tree Regressor
-print("\n🌲 Decision Tree Regressor...")
-dt_reg = DecisionTreeRegressor(max_depth=8, min_samples_split=50, random_state=42)
-start = time.time()
-dt_reg.fit(X_train_scaled, y_reg_train)
-baseline_results['dt_reg_train_time'] = time.time() - start
-
-y_pred_dt_reg = dt_reg.predict(X_test_scaled)
-baseline_results['dt_reg_rmse'] = np.sqrt(mean_squared_error(y_reg_test, y_pred_dt_reg))
-baseline_results['dt_reg_r2'] = r2_score(y_reg_test, y_pred_dt_reg)
-
-print(f"   RMSE: {baseline_results['dt_reg_rmse']:.2f}")
-print(f"   R²: {baseline_results['dt_reg_r2']:.4f}")
-
-print(f"\n✅ Baseline (All {len(X.columns)} features) completed")
-
-# ===== 6. RFECV FEATURE SELECTION =====
+# ============================================================================
+# 6. RFECV - FEATURE SELECTION PREPROCESSING
+# ============================================================================
 print("\n[6/7] 🔄 RFECV - Feature Selection Preprocessing")
 print("-" * 80)
-print("Applying RFECV to select optimal features...")
+print("Applying RFECV to select optimal oceanographic/meteorological features...")
 
-# Use Decision Tree as estimator
-estimator = DecisionTreeClassifier(max_depth=8, min_samples_split=50, random_state=42)
-
-start = time.time()
+# RFECV with Decision Tree estimator
 rfecv = RFECV(
-    estimator=estimator,
-    step=3,  # Step by 3 for faster computation with 67 features
+    estimator=DecisionTreeClassifier(max_depth=10, min_samples_split=50, random_state=42),
+    step=3,  # Faster for many features
     cv=5,
-    scoring='f1',
+    scoring='f1_weighted',
     min_features_to_select=5,
     n_jobs=-1
 )
-rfecv.fit(X_train_scaled, y_clf_train)
+
+import time
+start = time.time()
+rfecv.fit(X_train_scaled, y_train_clf)
 rfecv_time = time.time() - start
 
-selected_features = [f for f, s in zip(X.columns, rfecv.support_) if s]
-n_selected = len(selected_features)
+# Get selected features and rankings
+selected_features = [feature_cols[i] for i in range(len(feature_cols)) if rfecv.support_[i]]
+selected_indices = [i for i in range(len(feature_cols)) if rfecv.support_[i]]
 
-print(f"\n✅ RFECV completed in {rfecv_time:.2f}s")
-print(f"   Features selected: {n_selected}/{len(feature_cols)} ({n_selected/len(feature_cols)*100:.1f}%)")
-print(f"   Feature reduction: {(1-n_selected/len(feature_cols))*100:.1f}%")
-print(f"\n   Top 10 selected features:")
-for i, feat in enumerate(selected_features[:10], 1):
-    print(f"   {i:2d}. {feat}")
-if n_selected > 10:
-    print(f"   ... and {n_selected-10} more features")
+# Get feature rankings (1 = selected, higher = eliminated earlier)
+feature_rankings = {}
+for i, feat in enumerate(feature_cols):
+    feature_rankings[feat] = rfecv.ranking_[i]
 
-# Get selected features
-X_train_selected = X_train_scaled[:, rfecv.support_]
-X_test_selected = X_test_scaled[:, rfecv.support_]
+# Sort all features by ranking (best first)
+all_features_ranked = sorted(feature_rankings.items(), key=lambda x: x[1])
 
-# ===== 7. AFTER RFECV (WITH PREPROCESSING) =====
+# Transform data
+X_train_selected = X_train_scaled[:, selected_indices]
+X_test_selected = X_test_scaled[:, selected_indices]
+
+reduction = (1 - len(selected_features) / len(feature_cols)) * 100
+
+print(f"✅ RFECV completed in {rfecv_time:.2f}s")
+print(f"   Features selected: {len(selected_features)}/{len(feature_cols)} ({len(selected_features)/len(feature_cols)*100:.1f}%)")
+print(f"   Feature reduction: {reduction:.1f}%")
+print(f"   Optimal CV score: {rfecv.cv_results_['mean_test_score'].max():.4f}")
+
+print(f"\n   📊 Top Features by RFECV Ranking:")
+for i, (feat, rank) in enumerate(all_features_ranked[:min(10, len(all_features_ranked))], 1):
+    status = "✅ SELECTED" if rank == 1 else f"❌ Eliminated (rank {rank})"
+    print(f"   {i:2d}. {feat:30s} | Rank: {rank:2d} | {status}")
+
+# ============================================================================
+# 7. AFTER RFECV - WITH FEATURE SELECTION
+# ============================================================================
 print("\n[7/7] ✅ AFTER RFECV - With Feature Selection")
 print("-" * 80)
 
@@ -265,312 +275,424 @@ rfecv_results = {}
 
 # Decision Tree Classifier
 print("\n🌲 Decision Tree Classifier...")
-dt_clf_rfecv = DecisionTreeClassifier(max_depth=8, min_samples_split=50, random_state=42)
-start = time.time()
-dt_clf_rfecv.fit(X_train_selected, y_clf_train)
-rfecv_results['dt_clf_train_time'] = time.time() - start
-
-y_pred_dt_rfecv = dt_clf_rfecv.predict(X_test_selected)
-rfecv_results['dt_clf_accuracy'] = accuracy_score(y_clf_test, y_pred_dt_rfecv)
-rfecv_results['dt_clf_f1'] = f1_score(y_clf_test, y_pred_dt_rfecv)
-
-print(f"   Accuracy: {rfecv_results['dt_clf_accuracy']:.4f}")
-print(f"   F1-Score: {rfecv_results['dt_clf_f1']:.4f}")
+dt_clf_rfecv = DecisionTreeClassifier(max_depth=10, min_samples_split=50, random_state=42)
+dt_clf_rfecv.fit(X_train_selected, y_train_clf)
+dt_pred_rfecv = dt_clf_rfecv.predict(X_test_selected)
+rfecv_results['Decision Tree'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, dt_pred_rfecv),
+    'f1': f1_score(y_test_clf, dt_pred_rfecv, average='weighted'),
+    'predictions': dt_pred_rfecv
+}
+print(f"   Accuracy: {rfecv_results['Decision Tree']['accuracy']:.4f}")
+print(f"   F1-Score: {rfecv_results['Decision Tree']['f1']:.4f}")
 
 # Naive Bayes
 print("\n📊 Naive Bayes...")
 nb_rfecv = GaussianNB()
-start = time.time()
-nb_rfecv.fit(X_train_selected, y_clf_train)
-rfecv_results['nb_train_time'] = time.time() - start
-
-y_pred_nb_rfecv = nb_rfecv.predict(X_test_selected)
-rfecv_results['nb_accuracy'] = accuracy_score(y_clf_test, y_pred_nb_rfecv)
-rfecv_results['nb_f1'] = f1_score(y_clf_test, y_pred_nb_rfecv)
-
-print(f"   Accuracy: {rfecv_results['nb_accuracy']:.4f}")
-print(f"   F1-Score: {rfecv_results['nb_f1']:.4f}")
+nb_rfecv.fit(X_train_selected, y_train_clf)
+nb_pred_rfecv = nb_rfecv.predict(X_test_selected)
+rfecv_results['Naive Bayes'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, nb_pred_rfecv),
+    'f1': f1_score(y_test_clf, nb_pred_rfecv, average='weighted'),
+    'predictions': nb_pred_rfecv
+}
+print(f"   Accuracy: {rfecv_results['Naive Bayes']['accuracy']:.4f}")
+print(f"   F1-Score: {rfecv_results['Naive Bayes']['f1']:.4f}")
 
 # Logistic Regression
 print("\n📈 Logistic Regression...")
 lr_rfecv = LogisticRegression(max_iter=1000, random_state=42)
-start = time.time()
-lr_rfecv.fit(X_train_selected, y_clf_train)
-rfecv_results['lr_train_time'] = time.time() - start
-
-y_pred_lr_rfecv = lr_rfecv.predict(X_test_selected)
-rfecv_results['lr_accuracy'] = accuracy_score(y_clf_test, y_pred_lr_rfecv)
-rfecv_results['lr_f1'] = f1_score(y_clf_test, y_pred_lr_rfecv)
-
-print(f"   Accuracy: {rfecv_results['lr_accuracy']:.4f}")
-print(f"   F1-Score: {rfecv_results['lr_f1']:.4f}")
-
-# Decision Tree Regressor
-print("\n🌲 Decision Tree Regressor...")
-dt_reg_rfecv = DecisionTreeRegressor(max_depth=8, min_samples_split=50, random_state=42)
-start = time.time()
-dt_reg_rfecv.fit(X_train_selected, y_reg_train)
-rfecv_results['dt_reg_train_time'] = time.time() - start
-
-y_pred_dt_reg_rfecv = dt_reg_rfecv.predict(X_test_selected)
-rfecv_results['dt_reg_rmse'] = np.sqrt(mean_squared_error(y_reg_test, y_pred_dt_reg_rfecv))
-rfecv_results['dt_reg_r2'] = r2_score(y_reg_test, y_pred_dt_reg_rfecv)
-
-print(f"   RMSE: {rfecv_results['dt_reg_rmse']:.2f}")
-print(f"   R²: {rfecv_results['dt_reg_r2']:.4f}")
-
-print(f"\n✅ RFECV validation ({n_selected} features) completed")
-
-# ===== COMPARATIVE ANALYSIS =====
-print("\n" + "="*80)
-print("📊 COMPARATIVE ANALYSIS: BEFORE vs AFTER RFECV")
-print("="*80)
-
-comparison = pd.DataFrame({
-    'Model': [
-        'Decision Tree (Clf)',
-        'Decision Tree (Clf)',
-        'Naive Bayes',
-        'Naive Bayes',
-        'Logistic Regression',
-        'Logistic Regression',
-        'Decision Tree (Reg)',
-        'Decision Tree (Reg)'
-    ],
-    'Preprocessing': [
-        'BEFORE (No RFECV)', 'AFTER (RFECV)',
-        'BEFORE (No RFECV)', 'AFTER (RFECV)',
-        'BEFORE (No RFECV)', 'AFTER (RFECV)',
-        'BEFORE (No RFECV)', 'AFTER (RFECV)'
-    ],
-    'Features': [
-        len(X.columns), n_selected,
-        len(X.columns), n_selected,
-        len(X.columns), n_selected,
-        len(X.columns), n_selected
-    ],
-    'Metric_Value': [
-        baseline_results['dt_clf_f1'], rfecv_results['dt_clf_f1'],
-        baseline_results['nb_f1'], rfecv_results['nb_f1'],
-        baseline_results['lr_f1'], rfecv_results['lr_f1'],
-        baseline_results['dt_reg_r2'], rfecv_results['dt_reg_r2']
-    ],
-    'Metric_Name': [
-        'F1-Score', 'F1-Score',
-        'F1-Score', 'F1-Score',
-        'F1-Score', 'F1-Score',
-        'R²', 'R²'
-    ]
-})
-
-print("\n" + comparison.to_string(index=False))
-
-# Calculate improvements
-print("\n" + "="*80)
-print("📈 IMPROVEMENT ANALYSIS")
-print("="*80)
-
-improvements = {
-    'Decision Tree (Clf)': ((rfecv_results['dt_clf_f1'] - baseline_results['dt_clf_f1']) / baseline_results['dt_clf_f1'] * 100),
-    'Naive Bayes': ((rfecv_results['nb_f1'] - baseline_results['nb_f1']) / baseline_results['nb_f1'] * 100),
-    'Logistic Regression': ((rfecv_results['lr_f1'] - baseline_results['lr_f1']) / baseline_results['lr_f1'] * 100),
-    'Decision Tree (Reg)': ((rfecv_results['dt_reg_r2'] - baseline_results['dt_reg_r2']) / (1 - baseline_results['dt_reg_r2']) * 100)
+lr_rfecv.fit(X_train_selected, y_train_clf)
+lr_pred_rfecv = lr_rfecv.predict(X_test_selected)
+rfecv_results['Logistic Regression'] = {
+    'model_type': 'Classification',
+    'accuracy': accuracy_score(y_test_clf, lr_pred_rfecv),
+    'f1': f1_score(y_test_clf, lr_pred_rfecv, average='weighted'),
+    'predictions': lr_pred_rfecv
 }
+print(f"   Accuracy: {rfecv_results['Logistic Regression']['accuracy']:.4f}")
+print(f"   F1-Score: {rfecv_results['Logistic Regression']['f1']:.4f}")
 
-for model, improvement in improvements.items():
+print(f"\n✅ RFECV validation ({len(selected_features)} features) completed")
+
+# ============================================================================
+# 8. COMPARATIVE ANALYSIS
+# ============================================================================
+print("\n" + "=" * 80)
+print("📊 COMPARATIVE ANALYSIS: BEFORE vs AFTER RFECV")
+print("=" * 80)
+
+comparison_data = []
+for model_name in baseline_results.keys():
+    baseline_f1 = baseline_results[model_name]['f1']
+    rfecv_f1 = rfecv_results[model_name]['f1']
+    
+    comparison_data.append({
+        'Model': model_name,
+        'Preprocessing': 'BEFORE (No RFECV)',
+        'Features': len(feature_cols),
+        'F1-Score': baseline_f1
+    })
+    comparison_data.append({
+        'Model': model_name,
+        'Preprocessing': 'AFTER (RFECV)',
+        'Features': len(selected_features),
+        'F1-Score': rfecv_f1
+    })
+
+df_comparison = pd.DataFrame(comparison_data)
+print("\n", df_comparison.to_string(index=False))
+
+# ============================================================================
+# 9. IMPROVEMENT ANALYSIS
+# ============================================================================
+print("\n" + "=" * 80)
+print("📈 IMPROVEMENT ANALYSIS")
+print("=" * 80)
+
+improvements = []
+p_values = []
+
+for model_name in baseline_results.keys():
+    baseline_f1 = baseline_results[model_name]['f1']
+    rfecv_f1 = rfecv_results[model_name]['f1']
+    improvement = ((rfecv_f1 - baseline_f1) / baseline_f1) * 100
+    
+    # Paired t-test
+    baseline_preds = baseline_results[model_name]['predictions']
+    rfecv_preds = rfecv_results[model_name]['predictions']
+    
+    baseline_correct = (baseline_preds == y_test_clf).astype(int)
+    rfecv_correct = (rfecv_preds == y_test_clf).astype(int)
+    
+    t_stat, p_val = ttest_rel(rfecv_correct, baseline_correct)
+    
+    improvements.append(improvement)
+    p_values.append(p_val)
+    
     status = "✅ IMPROVED" if improvement > 0 else "❌ DEGRADED" if improvement < -0.1 else "≈ SIMILAR"
-    print(f"\n{model}:")
-    print(f"  Improvement: {improvement:+.2f}% {status}")
     
-    if 'Reg' in model:
-        print(f"  BEFORE: R² = {baseline_results['dt_reg_r2']:.4f}")
-        print(f"  AFTER:  R² = {rfecv_results['dt_reg_r2']:.4f}")
-    elif 'Decision Tree' in model:
-        print(f"  BEFORE: F1 = {baseline_results['dt_clf_f1']:.4f}")
-        print(f"  AFTER:  F1 = {rfecv_results['dt_clf_f1']:.4f}")
-    elif 'Naive Bayes' in model:
-        print(f"  BEFORE: F1 = {baseline_results['nb_f1']:.4f}")
-        print(f"  AFTER:  F1 = {rfecv_results['nb_f1']:.4f}")
-    elif 'Logistic' in model:
-        print(f"  BEFORE: F1 = {baseline_results['lr_f1']:.4f}")
-        print(f"  AFTER:  F1 = {rfecv_results['lr_f1']:.4f}")
-
-# Statistical significance
-print("\n" + "="*80)
-print("📊 STATISTICAL SIGNIFICANCE (Paired T-Test)")
-print("="*80)
-
-# For classification models
-for model_name, y_pred_before, y_pred_after in [
-    ('Decision Tree', y_pred_dt, y_pred_dt_rfecv),
-    ('Naive Bayes', y_pred_nb, y_pred_nb_rfecv),
-    ('Logistic Regression', y_pred_lr, y_pred_lr_rfecv)
-]:
-    errors_before = (y_pred_before != y_clf_test.values).astype(int)
-    errors_after = (y_pred_after != y_clf_test.values).astype(int)
-    
-    t_stat, p_value = stats.ttest_rel(errors_before, errors_after)
-    
-    sig = "✅ Significant (p<0.05)" if p_value < 0.05 else "⚠️ Not significant"
     print(f"\n{model_name}:")
-    print(f"  p-value: {p_value:.4f} {sig}")
+    print(f"  Improvement: {improvement:+.2f}% {status}")
+    print(f"  BEFORE: F1 = {baseline_f1:.4f}")
+    print(f"  AFTER:  F1 = {rfecv_f1:.4f}")
+    print(f"  p-value: {p_val:.4f} {'✅ Significant (p<0.05)' if p_val < 0.05 else '⚠️ Not significant'}")
 
-# ===== CONCLUSION =====
-print("\n" + "="*80)
+avg_improvement = np.mean(improvements)
+
+# ============================================================================
+# 10. VERDICT
+# ============================================================================
+print("\n" + "=" * 80)
 print("🎯 CONCLUSION")
-print("="*80)
+print("=" * 80)
 
-avg_improvement = np.mean(list(improvements.values()))
-significant_models = sum([
-    1 for p in [
-        stats.ttest_rel((y_pred_dt != y_clf_test.values).astype(int), (y_pred_dt_rfecv != y_clf_test.values).astype(int))[1],
-        stats.ttest_rel((y_pred_nb != y_clf_test.values).astype(int), (y_pred_nb_rfecv != y_clf_test.values).astype(int))[1],
-        stats.ttest_rel((y_pred_lr != y_clf_test.values).astype(int), (y_pred_lr_rfecv != y_clf_test.values).astype(int))[1]
-    ] if p < 0.05
-])
+significant_count = sum(1 for p in p_values if p < 0.05)
 
 print(f"\nRFECV Preprocessing Summary:")
-print(f"  Feature Reduction: {(1-n_selected/len(X.columns))*100:.1f}% ({len(X.columns)} → {n_selected} features)")
-print(f"  Average Performance Improvement: {avg_improvement:+.2f}%")
-print(f"  Statistically Significant Models: {significant_models}/3")
+print(f"  Feature Reduction: {reduction:.1f}% ({len(feature_cols)} → {len(selected_features)} features)")
+print(f"  Average Performance Change: {avg_improvement:+.2f}%")
+print(f"  Statistically Significant Models: {significant_count}/{len(baseline_results)}")
 
-if avg_improvement > 1:
-    effectiveness = "✅ HIGHLY EFFECTIVE"
-elif avg_improvement > 0:
-    effectiveness = "✅ EFFECTIVE"
+if avg_improvement > 2 and significant_count >= 2:
+    verdict = "✅ HIGHLY EFFECTIVE"
+    recommendation = "USE RFECV"
+elif avg_improvement > 0 and significant_count >= 1:
+    verdict = "✅ EFFECTIVE"
+    recommendation = "USE RFECV"
+elif abs(avg_improvement) <= 2:
+    verdict = "≈ NEUTRAL"
+    recommendation = "OPTIONAL (minimal impact)"
 else:
-    effectiveness = "⚠️ NOT EFFECTIVE"
+    verdict = "❌ NOT EFFECTIVE"
+    recommendation = "SKIP RFECV"
 
-print(f"\n🏆 Overall Verdict: RFECV preprocessing is {effectiveness}")
-print(f"   Recommendation: {'USE' if avg_improvement > 0 else 'SKIP'} RFECV for this dataset")
+print(f"\n🏆 Overall Verdict: RFECV preprocessing is {verdict}")
+print(f"   Recommendation: {recommendation} for this dataset")
 
-# Save results
-output_dir = Path(__file__).parent / 'outputs'
+# ============================================================================
+# 11. SAVE RESULTS
+# ============================================================================
+output_dir = script_dir / "outputs"
 output_dir.mkdir(exist_ok=True)
 
-comparison.to_csv(output_dir / 'dataset2_comparison.csv', index=False)
+# Save comparison
+df_comparison.to_csv(output_dir / "dataset2_comparison.csv", index=False)
 
-# Save selected features
-pd.DataFrame({
-    'Feature': selected_features,
-    'Rank': range(1, len(selected_features)+1)
-}).to_csv(output_dir / 'dataset2_selected_features.csv', index=False)
+# Save ALL features with rankings and categorization
+all_feature_data = []
+for feat, rank in all_features_ranked:
+    feat_lower = str(feat).lower()
+    
+    if any(x in feat_lower for x in ['hsig', 'hmax', 'wave', 'height']):
+        category = 'Wave Parameters'
+        interpretation = "Wave characteristics"
+    elif any(x in feat_lower for x in ['wind', 'gust']):
+        category = 'Wind'
+        interpretation = "Wind measurements"
+    elif any(x in feat_lower for x in ['temp', 'sst']):
+        category = 'Temperature'
+        interpretation = "Water/air temperature"
+    elif any(x in feat_lower for x in ['sal', 'psu']):
+        category = 'Salinity'
+        interpretation = "Water salinity"
+    elif any(x in feat_lower for x in ['dir', 'compass']):
+        category = 'Direction'
+        interpretation = "Wind/wave direction"
+    elif any(x in feat_lower for x in ['period', 'freq']):
+        category = 'Wave Frequency'
+        interpretation = "Wave oscillation"
+    elif any(x in feat_lower for x in ['press', 'atm']):
+        category = 'Pressure'
+        interpretation = "Atmospheric pressure"
+    elif any(x in feat_lower for x in ['current', 'surf']):
+        category = 'Oceanographic'
+        interpretation = "Ocean current measurements"
+    else:
+        category = 'Other'
+        interpretation = feat
+    
+    all_feature_data.append({
+        'Feature': feat,
+        'RFECV_Ranking': rank,
+        'Selected': 'YES' if rank == 1 else 'NO',
+        'Category': category,
+        'Interpretation': interpretation
+    })
 
-# ===== VISUALIZATION =====
+df_all_features = pd.DataFrame(all_feature_data)
+df_all_features.to_csv(output_dir / "dataset2_all_feature_scores.csv", index=False)
+
+# Save only selected features (for backward compatibility)
+feature_categorization = []
+for feat in selected_features:
+    feat_lower = str(feat).lower()
+    
+    if any(x in feat_lower for x in ['hsig', 'hmax', 'wave', 'height']):
+        category = 'Wave Parameters'
+        interpretation = "Wave characteristics"
+    elif any(x in feat_lower for x in ['wind', 'gust']):
+        category = 'Wind'
+        interpretation = "Wind measurements"
+    elif any(x in feat_lower for x in ['temp', 'sst']):
+        category = 'Temperature'
+        interpretation = "Water/air temperature"
+    elif any(x in feat_lower for x in ['sal', 'psu']):
+        category = 'Salinity'
+        interpretation = "Water salinity"
+    elif any(x in feat_lower for x in ['dir', 'compass']):
+        category = 'Direction'
+        interpretation = "Wind/wave direction"
+    elif any(x in feat_lower for x in ['period', 'freq']):
+        category = 'Wave Frequency'
+        interpretation = "Wave oscillation"
+    elif any(x in feat_lower for x in ['press', 'atm']):
+        category = 'Pressure'
+        interpretation = "Atmospheric pressure"
+    else:
+        category = 'Oceanographic'
+        interpretation = "General ocean measurement"
+    
+    feature_categorization.append({
+        'Feature': feat,
+        'Category': category,
+        'Interpretation': interpretation
+    })
+
+df_features = pd.DataFrame(feature_categorization)
+df_features.to_csv(output_dir / "dataset2_selected_features.csv", index=False)
+
+# ============================================================================
+# 12. VISUALIZATION
+# ============================================================================
 print("\n📊 Generating visualizations...")
 
-# Figure 1: Performance Comparison
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-fig.suptitle('Dataset 2: RFECV Preprocessing Impact Analysis', fontsize=16, fontweight='bold')
+# Figure 1: Comprehensive Analysis (4 panels)
+fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+fig.suptitle('Dataset 2: Wave Height Prediction - RFECV Analysis', fontsize=16, fontweight='bold')
 
-# 1.1 F1-Score Comparison (Classification)
-models_clf = ['Decision Tree', 'Naive Bayes', 'Logistic Reg']
-before_f1 = [baseline_results['dt_clf_f1'], baseline_results['nb_f1'], baseline_results['lr_f1']]
-after_f1 = [rfecv_results['dt_clf_f1'], rfecv_results['nb_f1'], rfecv_results['lr_f1']]
+# Panel 1: F1-Score Comparison
+ax1 = axes[0, 0]
+models = list(baseline_results.keys())
+baseline_scores = [baseline_results[m]['f1'] for m in models]
+rfecv_scores = [rfecv_results[m]['f1'] for m in models]
 
-x = np.arange(len(models_clf))
+x = np.arange(len(models))
 width = 0.35
 
-ax1 = axes[0, 0]
-bars1 = ax1.bar(x - width/2, before_f1, width, label=f'BEFORE ({len(X.columns)} features)', color='#e74c3c', alpha=0.8)
-bars2 = ax1.bar(x + width/2, after_f1, width, label=f'AFTER RFECV ({n_selected} features)', color='#27ae60', alpha=0.8)
+bars1 = ax1.bar(x - width/2, baseline_scores, width, label=f'BEFORE ({len(feature_cols)} feat)', 
+                color='coral', alpha=0.8)
+bars2 = ax1.bar(x + width/2, rfecv_scores, width, label=f'AFTER ({len(selected_features)} feat)', 
+                color='mediumseagreen', alpha=0.8)
 
+ax1.set_xlabel('Model', fontweight='bold')
 ax1.set_ylabel('F1-Score', fontweight='bold')
-ax1.set_title('Classification Performance (F1-Score)', fontweight='bold')
+ax1.set_title('F1-Score Comparison: BEFORE vs AFTER RFECV', fontweight='bold')
 ax1.set_xticks(x)
-ax1.set_xticklabels(models_clf)
+ax1.set_xticklabels(models, rotation=15, ha='right')
 ax1.legend()
 ax1.grid(axis='y', alpha=0.3)
 
-# Add value labels
 for bars in [bars1, bars2]:
     for bar in bars:
         height = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., height,
                 f'{height:.3f}', ha='center', va='bottom', fontsize=9)
 
-# 1.2 Improvement Percentage
-improvements_list = [
-    ((rfecv_results['dt_clf_f1'] - baseline_results['dt_clf_f1']) / baseline_results['dt_clf_f1'] * 100),
-    ((rfecv_results['nb_f1'] - baseline_results['nb_f1']) / baseline_results['nb_f1'] * 100),
-    ((rfecv_results['lr_f1'] - baseline_results['lr_f1']) / baseline_results['lr_f1'] * 100)
-]
-
+# Panel 2: Improvement Percentage
 ax2 = axes[0, 1]
-colors = ['#27ae60' if imp > 0 else '#e74c3c' for imp in improvements_list]
-bars = ax2.barh(models_clf, improvements_list, color=colors, alpha=0.8)
+colors = ['green' if imp > 0 else 'red' for imp in improvements]
+bars = ax2.barh(models, improvements, color=colors, alpha=0.7)
 ax2.set_xlabel('Improvement (%)', fontweight='bold')
-ax2.set_title('Performance Change (%)', fontweight='bold')
+ax2.set_title('Performance Change After RFECV', fontweight='bold')
 ax2.axvline(x=0, color='black', linestyle='--', linewidth=1)
 ax2.grid(axis='x', alpha=0.3)
 
-# Add value labels
-for i, (bar, val) in enumerate(zip(bars, improvements_list)):
-    ax2.text(val, i, f' {val:+.2f}%', va='center', fontsize=10, fontweight='bold')
+# Semua label di kanan bar (positive position)
+for i, (bar, imp, model) in enumerate(zip(bars, improvements, models)):
+    x_pos = max(imp, 0) + 0.08  # Selalu di kanan, minimum di x=0
+    ax2.text(x_pos, i, f'{imp:+.2f}%', 
+            va='center', ha='left', fontweight='bold', fontsize=10)
 
-# 1.3 Feature Selection Process
+# Panel 3: Feature Reduction
 ax3 = axes[1, 0]
-feature_counts = [len(X.columns), n_selected]
-labels = ['BEFORE\n(All Features)', 'AFTER\n(RFECV Selected)']
-colors_pie = ['#e74c3c', '#27ae60']
+sizes = [len(selected_features), len(feature_cols) - len(selected_features)]
+labels = [f'SELECTED\n{len(selected_features)} features', 
+          f'REMOVED\n{len(feature_cols) - len(selected_features)} features']
+colors_pie = ['mediumseagreen', 'lightcoral']
+explode = (0.05, 0)
 
-wedges, texts, autotexts = ax3.pie(feature_counts, labels=labels, autopct='%d',
-                                     colors=colors_pie, startangle=90,
-                                     textprops={'fontsize': 11, 'fontweight': 'bold'})
-ax3.set_title(f'Feature Reduction: {(1-n_selected/len(X.columns))*100:.1f}%', fontweight='bold')
+wedges, texts, autotexts = ax3.pie(sizes, explode=explode, labels=labels, colors=colors_pie,
+                                     autopct='%1.1f%%', startangle=90, textprops={'fontsize': 10})
+ax3.set_title(f'Feature Reduction: {reduction:.1f}%\n({len(feature_cols)} → {len(selected_features)} features)', 
+              fontweight='bold')
 
-# 1.4 Statistical Significance
-pvalues = []
-for y_pred_before, y_pred_after in [(y_pred_dt, y_pred_dt_rfecv),
-                                      (y_pred_nb, y_pred_nb_rfecv),
-                                      (y_pred_lr, y_pred_lr_rfecv)]:
-    errors_before = (y_pred_before != y_clf_test.values).astype(int)
-    errors_after = (y_pred_after != y_clf_test.values).astype(int)
-    _, p = stats.ttest_rel(errors_before, errors_after)
-    pvalues.append(p if not np.isnan(p) else 1.0)
+for autotext in autotexts:
+    autotext.set_color('white')
+    autotext.set_fontweight('bold')
 
+# Panel 4: Statistical Significance
 ax4 = axes[1, 1]
-colors_sig = ['#27ae60' if p < 0.05 else '#e74c3c' for p in pvalues]
-bars = ax4.bar(models_clf, pvalues, color=colors_sig, alpha=0.8)
-ax4.axhline(y=0.05, color='black', linestyle='--', linewidth=2, label='α=0.05 threshold')
+colors_sig = ['green' if p < 0.05 else 'orange' for p in p_values]
+bars = ax4.bar(models, p_values, color=colors_sig, alpha=0.7)
+ax4.axhline(y=0.05, color='red', linestyle='--', linewidth=2, label='α = 0.05')
+ax4.set_xlabel('Model', fontweight='bold')
 ax4.set_ylabel('p-value', fontweight='bold')
-ax4.set_title('Statistical Significance (Paired t-test)', fontweight='bold')
-ax4.set_ylim(0, max([p for p in pvalues if p < 1.0]) * 1.2 if any(p < 1.0 for p in pvalues) else 1)
+ax4.set_title('Statistical Significance (Paired T-Test)', fontweight='bold')
+ax4.set_xticklabels(models, rotation=15, ha='right')
 ax4.legend()
 ax4.grid(axis='y', alpha=0.3)
 
-# Add value labels
-for bar, pval in zip(bars, pvalues):
+for bar, p in zip(bars, p_values):
     height = bar.get_height()
-    sig_text = '✓ Sig' if pval < 0.05 else '✗ Not Sig'
     ax4.text(bar.get_x() + bar.get_width()/2., height,
-            f'{pval:.4f}\n{sig_text}', ha='center', va='bottom', fontsize=9)
+            f'{p:.4f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
 
 plt.tight_layout()
-plt.savefig(output_dir / 'dataset2_analysis.png', dpi=300, bbox_inches='tight')
-print(f"   Saved: dataset2_analysis.png")
+plt.savefig(output_dir / "dataset2_analysis.png", dpi=300, bbox_inches='tight')
+print("   Saved: dataset2_analysis.png")
 
-# Figure 2: Selected Features
-fig2, ax = plt.subplots(figsize=(10, 6))
-features_display = selected_features[:11]  # All 11
-ranks = list(range(1, len(features_display)+1))
+# Figure 2: Selected Features by Category
+fig2, ax = plt.subplots(figsize=(12, max(8, len(selected_features) * 0.4)))
 
-colors_feat = ['#3498db'] * len(features_display)
-bars = ax.barh(features_display, [12-r for r in ranks], color=colors_feat, alpha=0.8)
+categories = df_features['Category'].values
+colors_map = {
+    'Wave Parameters': 'royalblue',
+    'Wind': 'skyblue',
+    'Temperature': 'coral',
+    'Salinity': 'seagreen',
+    'Direction': 'gold',
+    'Wave Frequency': 'mediumpurple',
+    'Pressure': 'crimson',
+    'Oceanographic': 'teal',
+    'Other': 'gray'
+}
+colors = [colors_map.get(cat, 'gray') for cat in categories]
 
-ax.set_xlabel('Importance Score (12 - Rank)', fontweight='bold')
-ax.set_ylabel('Feature Name', fontweight='bold')
-ax.set_title('Dataset 2: All 11 Selected Features by RFECV', fontsize=14, fontweight='bold')
-ax.grid(axis='x', alpha=0.3)
+y_pos = np.arange(len(selected_features))
+bars = ax.barh(y_pos, [1] * len(selected_features), color=colors, alpha=0.8)
 
-# Add rank labels
-for i, (bar, rank) in enumerate(zip(bars, ranks)):
-    width = bar.get_width()
-    ax.text(width, i, f' Rank #{rank}', va='center', fontsize=9)
+ax.set_yticks(y_pos)
+ax.set_yticklabels(selected_features, fontsize=10)
+ax.set_xlabel('Selected for Wave Height Prediction', fontweight='bold')
+ax.set_title(f'Selected Features by Category ({len(selected_features)} features)', 
+             fontsize=14, fontweight='bold')
+ax.set_xlim(0, 1.2)
+ax.set_xticks([])
+
+# Add category labels
+for i, (feat, cat) in enumerate(zip(selected_features, categories)):
+    ax.text(1.02, i, cat, va='center', fontsize=9, style='italic', color=colors[i])
+
+# Legend
+from matplotlib.patches import Patch
+legend_elements = [Patch(facecolor=color, label=cat, alpha=0.8) 
+                   for cat, color in colors_map.items() if cat in categories]
+ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'dataset2_features.png', dpi=300, bbox_inches='tight')
-print(f"   Saved: dataset2_features.png")
+plt.savefig(output_dir / "dataset2_features.png", dpi=300, bbox_inches='tight')
+print("   Saved: dataset2_features.png")
+
+# Figure 3: Feature Ranking Visualization (All features)
+fig3, (ax_rank, ax_cv) = plt.subplots(1, 2, figsize=(16, max(8, len(all_features_ranked) * 0.35)))
+fig3.suptitle('Dataset 2: RFECV Feature Ranking & CV Performance', fontsize=16, fontweight='bold')
+
+# Left panel: All features by ranking
+feat_names = [f[:25] for f, _ in all_features_ranked]  # Truncate long names
+rankings = [r for _, r in all_features_ranked]
+colors_rank = ['mediumseagreen' if r == 1 else 'lightcoral' for r in rankings]
+
+y_pos = np.arange(len(feat_names))
+bars = ax_rank.barh(y_pos, [1/r if r <= 10 else 0.05 for r in rankings], color=colors_rank, alpha=0.8)
+ax_rank.set_yticks(y_pos)
+ax_rank.set_yticklabels(feat_names, fontsize=9)
+ax_rank.set_xlabel('Importance Score (1/Ranking)', fontweight='bold')
+ax_rank.set_title(f'All Features by RFECV Ranking', fontweight='bold')
+ax_rank.invert_yaxis()
+
+# Add ranking numbers
+for i, (bar, rank) in enumerate(zip(bars, rankings)):
+    label = f"Rank {rank}" if rank > 1 else "✅ Selected"
+    ax_rank.text(bar.get_width() + 0.01, i, label, va='center', fontsize=8, fontweight='bold')
+
+# Right panel: CV scores across feature elimination steps
+step_size = rfecv.step if hasattr(rfecv, 'step') else 1
+cv_scores = rfecv.cv_results_['mean_test_score']
+cv_std = rfecv.cv_results_['std_test_score']
+
+# Calculate actual n_features based on CV results length
+n_features_list = list(range(rfecv.min_features_to_select, 
+                              rfecv.min_features_to_select + len(cv_scores) * step_size, 
+                              step_size))
+
+ax_cv.plot(n_features_list, cv_scores, 'o-', color='steelblue', linewidth=2, markersize=6, label='Mean CV Score')
+ax_cv.fill_between(n_features_list, 
+                    cv_scores - cv_std, 
+                    cv_scores + cv_std, 
+                    alpha=0.2, color='steelblue', label='± 1 Std Dev')
+ax_cv.axvline(x=len(selected_features), color='green', linestyle='--', linewidth=2, 
+              label=f'Optimal: {len(selected_features)} features')
+ax_cv.set_xlabel('Number of Features', fontweight='bold')
+ax_cv.set_ylabel('Cross-Validation F1-Score', fontweight='bold')
+ax_cv.set_title('RFECV Cross-Validation Performance', fontweight='bold')
+ax_cv.legend(fontsize=9)
+ax_cv.grid(alpha=0.3)
+
+# Mark optimal point
+optimal_idx = (len(selected_features) - rfecv.min_features_to_select) // step_size
+if optimal_idx < len(cv_scores):
+    optimal_score = cv_scores[optimal_idx]
+    ax_cv.plot(len(selected_features), optimal_score, 'g*', markersize=20, zorder=5)
+    ax_cv.text(len(selected_features), optimal_score + 0.005, 
+              f'{len(selected_features)} feat\n{optimal_score:.4f}', 
+              ha='center', fontweight='bold', fontsize=9)
+
+plt.tight_layout()
+plt.savefig(output_dir / "dataset2_ranking.png", dpi=300, bbox_inches='tight')
+print("   Saved: dataset2_ranking.png")
 
 print(f"\n💾 Results saved to: {output_dir.absolute()}")
 print("\n✅ ANALYSIS COMPLETE!")
