@@ -172,16 +172,23 @@ Setiap metode feature selection diuji dengan **3 classifier berbeda**:
 
 ### 1. Before vs After Comparison
 
-![Dataset 1 Comparison](outputs-comparison/dataset1_before_after_comparison.png)
-*Gambar 1: Dataset 1 - Perbandingan performa sebelum dan sesudah feature selection untuk setiap method*
+**Dataset 1:**
 
-![Dataset 2 Comparison](outputs-comparison/dataset2_before_after_comparison.png)
-*Gambar 2: Dataset 2 - Perbandingan performa dengan margin improvement yang lebih kecil*
+![Dataset 1 Comparison](./outputs-comparison/dataset1_before_after_comparison.png)
+
+*Gambar 1: Perbandingan performa sebelum dan sesudah feature selection untuk Dataset 1 (Pharmacy Demand)*
+
+**Dataset 2:**
+
+![Dataset 2 Comparison](./outputs-comparison/dataset2_before_after_comparison.png)
+
+*Gambar 2: Perbandingan performa sebelum dan sesudah feature selection untuk Dataset 2 (Wave Height)*
 
 ### 2. Improvement Heatmap
 
-![Improvement Heatmap](outputs-comparison/before_after_improvement_heatmap.png)
-*Gambar 3: Heatmap improvement percentage - Hijau = Improvement, Merah = Degradation*
+![Improvement Heatmap](./outputs-comparison/before_after_improvement_heatmap.png)
+
+*Gambar 3: Heatmap improvement percentage untuk semua kombinasi metode dan model*
 
 **Insight dari Heatmap:**
 - Dataset 1: Wide range (−34% sampai +13%) → Feature selection berdampak besar
@@ -190,8 +197,9 @@ Setiap metode feature selection diuji dengan **3 classifier berbeda**:
 
 ### 3. Average Performance Summary
 
-![Average Improvement](outputs-comparison/before_after_avg_improvement.png)
-*Gambar 4: Ranking metode berdasarkan rata-rata improvement*
+![Average Improvement](./outputs-comparison/before_after_avg_improvement.png)
+
+*Gambar 4: Ranking metode berdasarkan rata-rata improvement di kedua dataset*
 
 **Key Takeaway:**
 - RFECV konsisten #1 di kedua dataset
