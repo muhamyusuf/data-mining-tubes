@@ -35,7 +35,7 @@ env/
 */.ipynb_checkpoints/*
 
 # Data files (large datasets)
-*.csv
+# *.csv
 !requirements.txt
 
 # OS

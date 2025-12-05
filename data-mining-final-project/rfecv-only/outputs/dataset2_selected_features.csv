@@ -1,6 +1,0 @@
-Feature,Category,Interpretation
-Hmax(m),Wave Parameters,Wave characteristics
-WaveDir(deg),Wave Parameters,Wave characteristics
-WavePeriod(s),Wave Parameters,Wave characteristics
-SurfCurrentDir,Direction,Wind/wave direction
-WindSpeed(knots),Wind,Wind measurements

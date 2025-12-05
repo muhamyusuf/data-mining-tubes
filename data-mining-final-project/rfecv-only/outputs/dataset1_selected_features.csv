@@ -1,7 +1,0 @@
-Feature,Category,Interpretation
-qty_lag_1,Lag (Historical),Past demand 1 days ago
-qty_roll_min_3,Rolling Extremes,Peak/trough demand over 3 days
-qty_ewma_3,Exponential MA,Weighted average (span 3)
-qty_change_1,Growth Rate,Demand change over 1 periods
-qty_change_3,Growth Rate,Demand change over 3 periods
-qty_change_7,Growth Rate,Demand change over 7 periods

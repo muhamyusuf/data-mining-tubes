@@ -16,8 +16,8 @@ env/
 *.ipynb_checkpoints
 
 # Results (optional - comment out if you want to commit results)
-experiment_results.csv
-comparison_results.png
+# experiment_results.csv
+# comparison_results.png
 
 # IDE
 .vscode/
